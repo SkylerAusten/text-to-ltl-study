@@ -1,0 +1,13 @@
+flask
+greenery @ git+https://github.com/SkylerAusten/greenery-custom.git@main
+cached_method
+networkx
+flask
+flask_sqlalchemy
+mysql-connector-python
+python-dotenv
+gunicorn
+pytest
+pyyaml
+ua-parser
+user-agents

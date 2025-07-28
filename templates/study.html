@@ -1,0 +1,651 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Regex Study</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .pane { border: 1px solid #ccc; border-radius: .5rem; padding: 1rem; margin-top: 1rem; }
+    .word-box { font-weight: 600; margin-bottom: 1rem; }
+    .btn-group { display: flex; gap: .5rem; width: 100%; }
+    .btn-group>* { flex: 1; }
+    .list-group-item.opacity-75 { cursor: not-allowed; }
+    .regex-list { font-size: .85rem;}
+    .regex-list .list-group-item {
+      padding: .25rem .5rem;
+      display: flex;
+      align-items: center;
+    }
+    .regex-list code { font-size: inherit; color:#000; }
+    .regex-list .eliminated {
+      background-color:#f8f9fa;
+      color:#8e9296 !important;
+    }
+    {% if not show_labels %}.regex-badges { display: none}{% endif %}
+    .regex-badges .badge { font-size: .75rem; margin: 0 .125rem }
+    .regex-badges .symbol {
+      line-height: 1;
+    }
+  .regex-list .eliminated .badge{
+    background-color:#a6a9aa !important;
+    color:#000;
+  }
+  .regex-badges .badge.bg-secondary{
+    background-color:#a6a9aa !important;
+    color:#000;
+  }
+  #studyTourOverlay {
+  position: fixed;
+  top: 0; left: 0;
+  width: 100vw; height: 100vh;
+  z-index: 4000;
+  }
+
+  .overlay-backdrop {
+    position: absolute;
+    background-color: rgba(0, 0, 0, 0.65);
+    top: 0; left: 0;
+    width: 100%; height: 100%;
+    z-index: 4001;
+  }
+
+  .overlay-box {
+    position: absolute;
+    max-width: 400px;
+    background: white;
+    padding: 1.5rem;
+    border-radius: .5rem;
+    box-shadow: 0 0 10px rgba(0,0,0,0.5);
+    z-index: 4200;
+  }
+  .tour-highlight {
+    position: relative;
+    z-index: 4100; /* highest of all */
+    box-shadow: 0 0 0 4px #0d6efd, 0 0 15px 5px rgba(13, 110, 253, 0.4);
+    border-radius: .5rem;
+    transition: box-shadow 0.3s ease;
+  }
+  .tour-disabled {
+    pointer-events: none;
+  }
+  .full-overlay {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw; height: 100vh;
+    background: rgba(0, 0, 0, 0.7);
+    z-index: 3000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .full-overlay-box {
+    background: white;
+    padding: 2rem 3rem;
+    border-radius: .75rem;
+    text-align: center;
+    box-shadow: 0 0 20px rgba(0,0,0,0.4);
+    max-width: 90%;
+  }
+  </style>
+  <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+</head>
+<body class="bg-light" data-session="{{ session_id }}">
+<div class="container mt-5">
+  <!-- Natural-language description -->
+  <div class="mb-4">
+    <h3><label class="form-label fw-semibold">Pattern Description:</label></h3>
+    <textarea class="form-control fs-5" rows="3" readonly>{{ text_description }}</textarea>
+  </div>
+  <h3 class="my-4">Classify each word based on whether it matches the <b>pattern description</b> above. Each word is independent.  Both, neither, or just one could match the description.</h3>
+
+  <!-- Two classification panes -->
+  <div class="row">
+    {% for w,id in [(word1,'pane-word1'), (word2,'pane-word2')] %}
+      <div class="col-md-6">
+        <div id="{{ id }}" class="pane bg-white shadow-sm">
+          <div class="word-box text-center fs-4" data-word="{{ w }}">{{ w }}</div>
+          <div class="text-center mb-2 regex-badges" data-full="1">
+            <strong>Matches:&nbsp;</strong>
+            {% for reg in regex_with_ids if reg.id in word_matches[w] %}
+              <span class="badge {{ 'bg-info' if reg.in_play else 'bg-secondary' }} me-1">
+                {{ reg.id }}
+              </span>
+            {% endfor %}
+            <span class="mx-2"></span>
+
+            <strong>Doesn't&nbsp;match:&nbsp;</strong>
+            {% for reg in regex_with_ids if reg.id not in word_matches[w] %}
+              <span class="badge {{ 'bg-info' if reg.in_play else 'bg-secondary' }} me-1">
+                {{ reg.id }}
+              </span>
+            {% endfor %}
+          </div>
+          <form class="classify-form"
+                data-word="{{ w }}"
+                data-pane="{{ id }}">
+            <div class="btn-group">
+              <button class="btn btn-success fs-5" value="accept">Accept</button>
+              <button class="btn btn-danger fs-5"  value="reject">Reject</button>
+              <button class="btn btn-secondary fs-5" value="unsure">Unsure</button>
+            </div>
+          </form>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+
+  <!-- Candidate regular expressions -->
+  <div class="pane bg-white shadow-sm p-2"{% if not show_candidates %} style="display: none;"{% endif %}>
+    <h5 class="fw-semibold mb-2">Candidate regular expressions</h5>
+
+    <ul class="list-group list-group-flush regex-list">
+      {% for r in regex_with_ids %}
+        <li class="fs-6 list-group-item{% if not r.in_play %} eliminated{% endif %}" data-rid="{{ r.id }}">
+          <span class="badge bg-info me-2 flex-shrink-0">{{ r.id }}</span>
+          <code>{{ r.expr }}</code>
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+
+  <!-- Latest-state buckets -->
+  <h4 class="mt-4">Your Classifications</h4>
+  <div class="row">
+    {% for bucket, label in [(accepted_words,'Accepted'),
+                            (rejected_words,'Rejected'),
+                            (unsure_words,'Unsure')] %}
+      <div class="col-md-4">
+        <div class="card mb-4">
+          <div class="card-header text-bg-light"><h5 class="mb-0">{{ label }}</h5></div>
+          <ul id="{{ label|lower }}-list" class="list-group list-group-flush">
+            {% for word in bucket %}
+            <li class="list-group-item d-flex flex-column align-items-start">
+              <div class="d-flex justify-content-between w-100 align-items-center">
+                <span>{{ word }}</span>
+                <select class="form-select form-select-sm w-auto reclassify"
+                        name="classify-{{ word }}"
+                        data-word="{{ word }}">
+                  <option value="accept" {% if label=='Accepted' %}selected{% endif %}>Accept</option>
+                  <option value="reject" {% if label=='Rejected' %}selected{% endif %}>Reject</option>
+                  <option value="unsure" {% if label=='Unsure' %}selected{% endif %}>Unsure</option>
+                </select>
+              </div>
+              <div class="regex-badges text-center mt-1">
+                <span class="fw-semibold">M:&nbsp;</span>
+                {% for r in regex_with_ids %}
+                  {% if r.id in word_matches[word] %}
+                    <span class="badge {{ 'bg-info' if r.in_play else 'bg-secondary' }} me-1">{{ r.id }}</span>
+                  {% endif %}
+                {% endfor %}
+                <span class="mx-1"></span>
+                <span class="fw-semibold">DM:&nbsp;</span>
+                {% for r in regex_with_ids %}
+                  {% if r.id not in word_matches[word] %}
+                    <span class="badge {{ 'bg-info' if r.in_play else 'bg-secondary' }} me-1">{{ r.id }}</span>
+                  {% endif %}
+                {% endfor %}
+              </div>
+            </li>
+            {% endfor %}
+          </ul>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+
+<!-- Fullscreen Notification Overlay -->
+{% if (first_in_session and not first_run) or from_review %}
+  <div id="fullScreenNotice" class="full-overlay">
+    <div class="full-overlay-box">
+      <div class="fs-5">
+        {% if first_in_session %}
+          <strong>Moving onto a new problem!</strong><br>
+          Read the pattern description before you continue.
+        {% elif from_review %}
+          <strong>Returning to the previous problem!</strong><br>
+          More classifications are needed to continue.
+        {% endif %}
+      </div>
+      <button class="btn btn-primary mt-4" onclick="dismissOverlay()">Continue</button>
+    </div>
+  </div>
+{% endif %}
+
+<!-- Study Tour Modal (moved to end of <body>) -->
+  <div id="studyTourOverlay" style="display:none;">
+    <div class="overlay-backdrop"></div>
+    <div class="overlay-box">
+      <div id="overlay-text" class="mb-3"></div>
+      <button class="btn btn-primary" id="overlay-next">Next</button>
+    </div>
+  </div>
+
+
+<!-- Bootstrap bundle -->
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+  /* ============================================================================
+     Globals & helpers
+  ============================================================================ */
+  const SESSION_ID = document.body.dataset.session;      // session_id from Flask
+  const WORD_MATCHES = {{ word_matches|tojson }};   //  {word: [rid, …]}
+  // TODO: This should be in session storage.
+
+  function sanitizeWordForDisplay(word) {
+    // Replace all control characters (U+0000–U+001F) with " ".
+    // TODO: Move this to a helper JS file.
+    if (word === '') {
+      return '<em class="text-muted">&lt;empty string&gt;</em>';
+    }
+
+    return word.replace(/[\x00-\x1F]/g, ' ');
+  }
+
+  // On load, sanitize classification pane words.
+  document.querySelectorAll('.word-box').forEach(box => {
+    const raw = box.dataset.word;
+    box.innerHTML = sanitizeWordForDisplay(raw);
+  });
+
+  // On load, resize the pattern description text box.
+  document.addEventListener("DOMContentLoaded", () => {
+    const descBox = document.querySelector("textarea.form-control");
+    if (descBox) {
+      // Set height to auto first to get accurate scrollHeight
+      descBox.style.height = "auto";
+      // Then set height to fit content
+      descBox.style.height = descBox.scrollHeight + "px";
+    }
+  });
+
+
+  // Regex candidate lookup helper.
+  const regexItems = {};
+  document.querySelectorAll('.regex-list .list-group-item').forEach(li => {
+    regexItems[li.dataset.rid] = li;
+  });
+
+  // Add event listener for when the user reclassifies a word.
+  document.addEventListener('change', ev => {
+    const sel = ev.target;
+    if (sel.matches('.reclassify')) {
+      handleReclassify(sel);
+    }
+  });
+
+  // Returns parsed JSON or null if body is empty / not-JSON
+  async function safeJSON (response){
+    try{
+      const text = await response.clone().text();        // don’t consume body
+      return text.trim() ? JSON.parse(text) : null;
+    }catch{ return null; }
+  }
+
+  function dismissOverlay() {
+    const overlay = document.getElementById('fullScreenNotice');
+    if (overlay) overlay.remove();
+
+    // Remove 'from_review' from URL without reloading.
+    const url = new URL(window.location);
+    url.searchParams.delete('from_review');
+    window.history.replaceState({}, document.title, url);
+  }
+
+
+  // Quick lookup dict for the three bucket list items.
+  const lists = {
+    accept : document.getElementById('accepted-list'),
+    reject : document.getElementById('rejected-list'),
+    unsure : document.getElementById('unsure-list')
+  };
+
+  // Update the enabled/disabled status of elements.
+  const updateElemUsability = (sel, on = true) =>
+    document.querySelectorAll(sel).forEach(el => el.disabled = on);
+
+  function htmlBadges(word, fullLabels = false){
+    const matches = new Set(WORD_MATCHES[word] || []);
+    let out = '<div class="regex-badges text-center mt-1">';
+
+    if (fullLabels) {
+      out += '<strong>Matches:&nbsp;</strong>';
+    } else {
+      out += '<span class="fw-semibold">M:&nbsp;</span>';
+    }
+
+    for (const [rid, li] of Object.entries(regexItems)){
+      if (matches.has(rid)){
+        out += `<span class="badge ${li.classList.contains('eliminated') ? 'bg-secondary':'bg-info'} me-1">${rid}</span>`;
+      }
+    }
+
+    if (fullLabels) {
+      out += '<span class="mx-2"></span><strong>Doesn’t&nbsp;match:&nbsp;</strong>';
+    } else {
+      out += '<span class="mx-1"></span><span class="fw-semibold">DM:&nbsp;</span>';
+    }
+
+    for (const [rid, li] of Object.entries(regexItems)){
+      if (!matches.has(rid)){
+        out += `<span class="badge ${li.classList.contains('eliminated') ? 'bg-secondary':'bg-info'} me-1">${rid}</span>`;
+      }
+    }
+
+    return out + '</div>';
+  }
+
+
+  function updateRegexDisplay(regexList) {
+    // (1) update the main candidate list
+    for (const r of regexList) {
+      const li = regexItems[r.id];
+      if (!li) continue;
+      r.in_play ? unmute(li) : mute(li);
+    }
+
+    // (2) rebuild every .regex-badges block
+    document.querySelectorAll('.regex-badges').forEach(container => {
+      const word =
+            container.closest('li')?.querySelector('[data-word]')?.dataset.word
+        || container.closest('.pane')?.querySelector('.word-box')?.dataset.word;
+      if (!word) return;
+
+      const fullLabels = container.dataset.full === '1';
+      container.innerHTML = htmlBadges(word, fullLabels);
+    });
+  }
+
+
+
+
+  // Build the <li> element that lives in a bucket list
+  function makeBucketItem (word, initialLabel) {
+    // Create a list item.
+    const li = document.createElement('li');
+
+    // Set its class to be like all other list items.
+    li.className =
+      'list-group-item d-flex flex-column align-items-start';
+
+    // Update the item's HTML.
+    li.innerHTML = `
+    <div class="d-flex justify-content-between w-100 align-items-center">
+        ${sanitizeWordForDisplay(word)}
+        <select class="form-select form-select-sm w-auto reclassify"
+                name="classify-${word}"
+                data-word="${word}">
+          <option value="accept" ${initialLabel==='accept' ? 'selected' : ''}>Accept</option>
+          <option value="reject" ${initialLabel==='reject' ? 'selected' : ''}>Reject</option>
+          <option value="unsure" ${initialLabel==='unsure' ? 'selected' : ''}>Unsure</option>
+        </select>
+    </div>
+    ${htmlBadges(word)}`;
+
+    const sel = li.querySelector('.reclassify');
+
+    // Ensure the CLOSED dropdown shows the right value.
+    sel.value = initialLabel;
+
+    // TODO: Remove?
+    // Array.from(sel.options).forEach(
+    //       o => o.defaultSelected = (o.value === initialLabel));
+
+    // Add reclassify event handler to the new list item.
+    sel.addEventListener('change', e => handleReclassify(e.target));
+
+    return li;
+  }
+
+  function mute(li)  { li.classList.add('eliminated'); }
+  function unmute(li){ li.classList.remove('eliminated'); }
+
+  /* ============================================================================
+    Handle classification of the two generated words.
+    Note: Refresh only after BOTH have been answered!
+  ============================================================================ */
+  let classifiedCount = 0;   // 0 → none answered yet
+
+  document.querySelectorAll('.classify-form').forEach(form => {
+    form.addEventListener('submit', async ev => {
+      ev.preventDefault();
+
+      const btn   = ev.submitter;            // button clicked
+      const word  = form.dataset.word;
+      const pane  = form.dataset.pane;
+      const label = btn.value;               // accept / reject / unsure
+      const n     = ++classifiedCount;       // 1st or 2nd submission on the page
+
+      // Disable all buttons and dropdowns during fetch
+      updateElemUsability('.classify-form button', true);
+      updateElemUsability('.reclassify', true);
+
+      try {
+        const res = await fetch('/classify', {
+          method : 'POST',
+          headers: { 'Content-Type':'application/json' },
+          body   : JSON.stringify({
+                    word,
+                    classification   : label,
+                    session_id       : SESSION_ID,
+                    submission_number: n
+                  })
+        });
+
+        if (!res.ok) {                       // any non-2xx → bail out
+          const msg = await res.text();
+          throw new Error(`HTTP ${res.status} – ${msg || 'no body'}`);
+        }
+
+        /* -------- success path --------------------------------------------- */
+        const data = await safeJSON(res) || {};
+
+        // (1) update badge colours if server sent new regex status
+        if (data.regexes) updateRegexDisplay(data.regexes);
+
+        // (2) hop to /review if the server says we’re ready
+        if (data.redirect) {
+          window.location.href = data.redirect;
+          return;
+        }
+
+        // (3) local DOM changes (only matter when we stay on /study)
+        lists[label].appendChild(makeBucketItem(word, label)); // move to bucket
+        document.getElementById(pane)?.remove();               // drop its pane
+
+        // reload after the second classification to fetch a new pair
+        if (n === 2) location.reload();
+
+      } catch (err) {
+        console.warn('Submission failed; reloading.\n' + err.message);
+        location.reload();
+      } finally {
+        // Re-enable UI after fetch.
+        updateElemUsability('.classify-form button', false);
+        updateElemUsability('.reclassify', false);
+      }
+    });
+  });
+
+  /* ============================================================================
+     Handle live re-classification of bucket items.
+  ============================================================================ */
+  let reclassifyBusy = false; // Global to check if already busy with reclassification.
+
+  async function handleReclassify(select){
+    if (reclassifyBusy) return;
+    reclassifyBusy = true;
+    updateElemUsability('.reclassify', true);
+
+    const word  = select.dataset.word;
+    const label = select.value;
+
+    // Disable all dropdowns and classification buttons
+    updateElemUsability('.reclassify', true);
+    updateElemUsability('.classify-form button', true);
+
+    try{
+      const res = await fetch('/reclassify', {
+        method : 'POST',
+        headers: { 'Content-Type':'application/json' },
+        body   : JSON.stringify({
+                  word,
+                  new_classification : label,
+                  session_id         : SESSION_ID,
+                  classification_type: 'reclassify'
+                })
+      });
+
+      if (res.ok){
+        // The body should be empty, but check for a redirect anyway.
+        const data = await safeJSON(res);
+        if (data?.redirect) {
+          window.location.href = data.redirect;
+          return;
+        }
+        if (data?.regexes) {
+          updateRegexDisplay(data.regexes);
+        }
+
+
+        // If success & no redirect, move li to the correct column.
+        const li = select.closest('li'); // Grab the reclassified list item.
+        lists[label].appendChild(li);
+
+        // Update the drop-down's value.
+        select.value = label;
+        // TODO: Remove?
+        // Array.from(select.options).forEach(
+        //       o => o.defaultSelected = (o.value === label));
+
+      } else {
+        const msg = await res.text();
+        throw new Error(`HTTP ${res.status} - ${msg || 'no body'}`);
+      }
+
+    } catch (err){
+        console.warn('Submission failed:\n' + err.message + '\n\n(reloading page...)');
+        location.reload();
+    } finally {
+      reclassifyBusy = false;
+      updateElemUsability('.reclassify', false);
+      updateElemUsability('.classify-form button', false);
+    }
+  }
+
+  // Study Tour Modal
+  function startTour() {
+    const steps = [
+      {
+        el: document.querySelector('textarea'),         // Pattern description
+        text: "Read the pattern description carefully. <b>Only accept words that match the pattern.</b>",
+      },
+      {
+        el: [
+          document.getElementById('pane-word1'),
+          document.getElementById('pane-word2')
+        ],
+        text: "Classify each word by choosing whether it matches the pattern.",
+      },{% if show_candidates %}
+      {
+        el: document.querySelector('.regex-list'),
+        text: `
+          These are the candidate regular expressions.
+          <span class="badge bg-info">Blue</span> means the regex is still in play and could be correct.
+          <span class="badge bg-secondary">Gray</span> means it has been ruled out based on your classifications.
+        `
+      },{% endif %}
+      {
+        el: document.querySelector('#accepted-list').closest('.row'),  // Final classification buckets
+        text: "Here you can see and change your earlier classifications.",
+      }
+    ];
+
+    const overlay = document.getElementById('studyTourOverlay');
+    const textBox = document.getElementById('overlay-text');
+    const nextBtn = document.getElementById('overlay-next');
+    const box = document.querySelector('.overlay-box');
+
+    let current = 0;
+
+    function showStep(i) {
+      // Remove previous highlights
+      document.querySelectorAll('.tour-highlight').forEach(el => el.classList.remove('tour-highlight'));
+
+      const step = steps[i];
+      const targets = Array.isArray(step.el) ? step.el : [step.el];
+
+      // Highlight current
+      for (const el of targets) {
+        if (el) el.classList.add('tour-highlight');
+      }
+
+      const first = targets[0];
+      if (!first) return;
+
+      const rect = first.getBoundingClientRect();
+      textBox.innerHTML = '<h5 class="text-primary mb-2">Interface Walkthrough</h5>' + step.text;
+
+      // Force box above only for the regex list step (index 2)
+      const isRegexStep = i === 2;
+      const showBelow = !isRegexStep && (rect.top + rect.height + 12 < window.innerHeight - 200);
+
+      box.style.top = showBelow
+        ? `${rect.top + rect.height + 12}px`
+        : `${rect.top - box.offsetHeight - 12}px`;
+
+      box.style.left = `${Math.min(rect.left, window.innerWidth - 420)}px`;
+
+      first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+
+    nextBtn.addEventListener('click', () => {
+      current++;
+      if (current < steps.length) {
+        showStep(current);
+      } else {
+        // End tour:
+        // Remove of the tour overlay.
+        overlay.style.display = 'none';
+        document.body.style.overflow = ''; // allow scrolling again
+
+        // Remove highlight from all elements
+        document.querySelectorAll('.tour-highlight').forEach(el =>
+          el.classList.remove('tour-highlight')
+        );
+
+        // Re-enable classification buttons after tour
+        document.querySelectorAll('.classify-form button').forEach(btn => {
+          btn.classList.remove('tour-disabled');
+        });
+
+        // ✅ Notify backend that walkthrough is complete
+        fetch("/mark_walkthrough_complete", {
+          method: "POST"
+        });
+      }
+    });
+
+    overlay.style.display = 'block';
+    document.body.style.overflow = 'hidden';
+    document.querySelectorAll('.classify-form button').forEach(btn => {
+      btn.classList.add('tour-disabled');
+    });
+
+    showStep(0);
+
+  }
+
+  /* ============================================================================
+    Show toast on the first classification of the session or on kickback from /review.
+  ============================================================================ */
+  {% if first_run %}
+    document.addEventListener("DOMContentLoaded", () => {
+      // Giving the resize time to happen.
+      startTour();
+    });
+  {% endif %}
+</script>
+</body>
+</html>

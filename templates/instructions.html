@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Study Instructions</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="shortcut icon" href="{{ url_for('static', filename='favicon.ico') }}">
+</head>
+<body class="bg-light">
+
+<div class="container mt-5">
+    <div class="card shadow">
+        <div class="card-body">
+            <h3 class="card-title">Regular Expressions (Regex) Study</h3>
+            <p class="card-text fs-5">
+                In this study, you'll be shown a <b>description of a regex pattern in English</b>. This description was given to an AI language model to generate candidate regexes that might match that pattern.
+            </p>
+            <p class="card-text fs-5">
+                You will be shown words related to the pattern description and regexes.  Classify the words based on whether they match that description <b>exactly</b>. The words will be shown in pairs, but each word is <b>independent.</b>  Both, neither, or just one could match the description.
+            </p>
+            <p class="card-text fs-5">
+                Be sure to match the <b>provided</b> specification, and <b>NOT</b> your intuitive understanding of the description.
+            </p>
+            <p class="card-text fs-5">
+                For example, if the description specifies phone numbers in the format <code>###-###-####</code>, you should <b>NOT</b> accept
+                words such as:
+                <ul class="fs-5">
+                    <li><code>(123)456-7890</code></li>
+                    <li><code>123-4567</code></li>
+                    <li><code>+1 123-456-7890</code></li>
+                </ul>
+            </p>
+            <p class="card-text fs-5">
+                because, even if these are common ways of providing phone numbers, they do not match what the description specifies.
+            </p>
+            <p class="card-text fs-5">
+                However, words like <code>123-456-7890</code> and <code>000-001-0101</code> <b>ARE</b> valid with this description.
+            </p>
+            <p class="card-text fs-5">
+                If you wish to proceed, we will <b>begin with a walkthrough explaining the user interface.</b>
+            </p>
+            <form method="POST" action="{{ url_for('instructions') }}">
+                <button type="submit" name="understand" value="true" class="btn btn-primary fs-5">I understand and wish to proceed.</button>
+                <button type="submit" name="understand" value="false" class="btn btn-secondary fs-5">I do not understand OR wish to exit the study.</button>
+            </form>
+        </div>
+    </div>
+</div>
+
+</body>
+</html>
