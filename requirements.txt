@@ -1,5 +1,4 @@
 flask
-greenery @ git+https://github.com/SkylerAusten/greenery-custom.git@main
 cached_method
 networkx
 flask
@@ -11,3 +10,4 @@ pytest
 pyyaml
 ua-parser
 user-agents
+antlr4-python3-runtime

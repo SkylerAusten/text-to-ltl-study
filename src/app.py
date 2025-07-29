@@ -1,5 +1,5 @@
 """
-This module defines the Flask application endpoints for the Text-to-Regex tool.
+This module defines the Flask application endpoints for the Text-to-LTL tool.
 
 It provides the following routes:
     - TODO
